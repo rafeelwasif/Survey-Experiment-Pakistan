@@ -1,0 +1,412 @@
+---
+title: "Madrasa Survey Final"
+author: "Rafeel Wasif"
+date: "January 12, 2017"
+output: html_document
+---
+
+
+```{r results=FALSE, warning=FALSE, comment=FALSE, warning=FALSE, error = FALSE, message=FALSE}
+rm(list=ls())
+
+library(corrplot)
+library(xtable)
+library(foreign)
+library(dplyr)
+library(stargazer)
+library(doBy)
+library(htmlTable)
+library(ggplot2)
+library(lsr)
+library(plotrix)
+library(descr)
+```
+
+
+
+
+```{r, warning=FALSE}
+
+
+data <- read.spss("Data.sav")
+data <- as.data.frame(data)
+```
+
+
+Making different groups of data based on the treatment.
+
+```{r}
+
+groups <- list()
+for (i in 1:5) {
+  data$group <- as.numeric(data$group)
+  groups[[i]] <- data %>%
+    filter(group == i)
+}
+
+
+control <- groups[[1]]
+government <- groups[[2]]
+saudi_arab <- groups[[3]]
+USA <- groups[[4]]
+germany <- groups[[5]]
+
+
+
+```
+Running Wilcox test results to find if the mean of our treatment result is significantly different the mean of our other treatments.
+
+Wilcox Test Results
+
+```{r}
+
+wilcox_test_list <- list(control, government, saudi_arab, USA, germany)
+wilcox_test_results <- list()
+for (i in 1:5) {
+  wilcox_test_results[[i]] <- wilcox.test(as.numeric(control$group_result), as.numeric(wilcox_test_list[[i]]$group_result))
+
+}
+
+
+
+```
+
+
+
+Confirming whether my variable coding is correct for subsequent analysis.
+
+```{r}
+# Support is 1
+table(control$q6, as.numeric(control$q6))
+
+# Male is 1
+table(control$Gender, as.numeric(control$Gender))
+
+table(control$q5, as.numeric(control$q5))
+
+```
+
+Binding the Wilcox test results together.
+
+
+
+
+
+Forming Sub-groups within the treatment groups.
+
+```{r}
+
+sub_groups_pml <- list()
+sub_groups_male <- list()
+support_military <- list()
+
+for (i in 1:5) {
+
+    sub_groups_pml[[i]] <- wilcox_test_list[[i]] %>%
+    filter(as.numeric(q5) == 1)
+
+    sub_groups_male[[i]] <- wilcox_test_list[[i]] %>%
+    filter(as.numeric(Gender) == 1)
+    
+    support_military[[i]] <- wilcox_test_list[[i]] %>%
+    filter(as.numeric(q6) == 1)
+    
+    
+    
+    }
+  
+
+
+```
+
+
+
+Converting the groups results into Dichotomous variable. Willingness to donate likert scale higher or equal to 3 is 1 on the dichotomous scale. 
+
+
+```{r}
+
+data_dichotom <- mutate(data, Will_Donate = ifelse(as.numeric(group_result) >= 3, 1, 0)) %>% mutate(punjabi = ifelse(as.numeric(d9) ==1, 1,0 )) 
+
+
+# Double-checking the results.
+
+table(data_dichotom$Will_Donate, data_dichotom$d9)
+
+
+```
+
+
+Running the Dichotomous Group Result.
+
+```{r, results = "hide"}
+data_dichotom$group <- as.factor(data_dichotom$group)
+
+
+```
+
+
+
+
+Running the regression without the ethnicity variable as there is not enough variation in the ethnicity variable and our model BiC improves.
+
+
+
+
+```{r}
+
+# Forming sub-groups of data. For cleaning purpose I make them again.
+Pml_group <- data_dichotom %>% filter(as.numeric(q5) == 1)
+Military_group <- data_dichotom %>% filter(as.numeric(q6) == 1)
+Male_Group <- data_dichotom %>% filter(as.numeric(Gender) == 1)
+
+Groups_List <- list(Pml_group, Military_group, Male_Group)
+
+```
+
+
+Finding CohensD, the effect size.
+
+```{r}
+cohens_d_list <- list(control, government, saudi_arab, USA, germany)
+
+cohen_sd <- list()
+for (i in 2:5) {
+cohen_sd[[i]] <-   cohensD(as.numeric(cohens_d_list[[1]]$group_result), as.numeric(cohens_d_list[[i]]$group_result))
+} 
+
+cohen_sd_set <- do.call(rbind, cohen_sd)
+cohen_sd_will_donate <- list()
+
+# Cohens D for Scale of Dichotmous scale.
+
+for (i in 2:5) {
+cohen_sd_will_donate[[i]] <-   cohensD(as.numeric(cohens_d_list[[1]]$will), as.numeric(cohens_d_list[[i]]$group_result))
+} 
+
+```
+
+
+
+Making Table of Variable Means and SD.
+
+
+
+
+```{r}
+
+
+data_dem_cols <- c("d2", "d3", "d4",  "d7", "d8a","group" )
+
+data_dem <- data[data_dem_cols]
+government_dem <- government[data_dem_cols]
+control_dem <- control[data_dem_cols]
+saudi_dem <- saudi_arab[data_dem_cols]
+us_dem <- USA[data_dem_cols]
+germany_dem <- germany[data_dem_cols]
+
+
+dem_means <- list()
+mean_covariates_list <- list(control_dem, government_dem, saudi_dem, us_dem, germany_dem)
+
+
+for (i in 1:5)
+{
+  dem_means[[i]] <- colMeans(sapply(mean_covariates_list[[i]], as.numeric))
+  
+}
+
+dem_means_set <- as.data.frame(do.call(rbind, dem_means))[,-6] 
+
+rownames(dem_means_set) <- c("Control", "Government", "Saudi Arab", "USA", "Germany")
+colnames(dem_means_set) <- c("Total HH Income", "Work Sector", "Lived Outside Pakisan","Highest Education Level", "Marital Status")
+
+round_df <- function(x, digits) {
+    # round all numeric variables
+    # x: data frame 
+    # digits: number of digits to round
+    numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+
+
+
+dem_means_set <- round_df(0.199, 2)
+dem_means_set <- t(dem_means_set)
+htmlTable(dem_means_set)
+```
+
+
+
+
+
+
+
+```{r}
+
+
+levels(data_dichotom$q4)
+
+
+data_dichotom$madrasa_enrolment <- data_dichotom$q4
+
+levels(data_dichotom$madrasa_enrolment)[levels(data_dichotom$madrasa_enrolment)=="Yes, I was enrolled in the past, but I am not enrolled at present"  ] <- "Yes"
+
+levels(data_dichotom$madrasa_enrolment)[levels(data_dichotom$madrasa_enrolment)=="Yes, I am currently enrolled"  ] <- "Yes"
+
+
+
+levels(data_dichotom$madrasa_enrolment)[levels(data_dichotom$madrasa_enrolment)=="Refused"  ] <- "No, I have not enrolled, and do not plan to enroll in the future"
+
+
+levels(data_dichotom$madrasa_enrolment)[levels(data_dichotom$madrasa_enrolment)=="Dont know"  ] <- "No, I have not enrolled, and do not plan to enroll in the future"
+
+
+levels(data_dichotom$madrasa_enrolment)[levels(data_dichotom$madrasa_enrolment)=="No, I have not enrolled, and do not plan to enroll in the future"  ] <- "No"
+
+
+table(data_dichotom$q4, data_dichotom$madrasa_enrolment)
+```
+
+
+```{r}
+
+data_dichotom$family_madrasa <- data_dichotom$q3
+
+levels(data_dichotom$family_madrasa)[levels(data_dichotom$family_madrasa)=="Prefer to Not Respond"  ] <- "No"
+
+
+levels(data_dichotom$family_madrasa)[levels(data_dichotom$family_madrasa)=="Yes, but not at present"] <- "Yes, they are currently enrolled"
+
+levels(data_dichotom$family_madrasa)[levels(data_dichotom$family_madrasa)=="Yes, they are currently enrolled"] <- "Yes"
+
+
+
+levels(data_dichotom$family_madrasa)[levels(data_dichotom$family_madrasa)=="Yes, they are currently enrolled"] <- "Yes"
+
+
+
+```
+
+
+
+Making List of Covariates.
+
+```{r}
+
+labels_list_new <- c('Goverment', 'Saudi Arabia', 'USA', 'Germany', 'Madrasa Donation in Last 12 months No',  'Madrasa Donation in Last 12 months -Dont Know',  'Madrasa Donation in Last 12 months -Prefer to Not Respond', 'Family Members in Madrasa- Currently enrolled', 'Family Members in Madrasa- Not Currently Enrolled', 'Family Members in Madrasa -Prefer to Not Respond', 'Extended Family in Madrasa-No' ,  'Enrolled in Madrasa -Yes I want to get enrolled in the future', 'Enrolled in Madrasa- No',  'Political Party- Pakistan Tehreek-e-Insaf' , 'Political Party-Pakistan Peoples Party', 'Political Party -None' , 'Political Party - Refused to Answer', 'Political Party -Dont know',  'Military Operation Against Taliban- Unnecessary' , 'Military Operation Against Taliban- Refused to Answer', 'Military Operation Against Taliban -Dont know', 'Female', 'Age', 'Married', 'Divorced', 'Highest Education Level', 'Not Lived Outside Pakistan', 'Agriculture',  'Service Industry',  'Informal Sector',  'Student',  'Refused', 'Rs 5001-Rs 11000', 'Rs 11001 -Rs 14000', 'Rs 14001 -Rs 16000', 'Rs 16001 - Rs 20000' , 'Rs 20001 -Rs 37000', 'More than Rs 37000', 'Rural' )
+
+
+
+
+
+
+```
+
+
+
+Binary Logit Regression
+
+```{r}
+
+regression_model_1_no_ethnicity_madrasa_enrolment_family <-  glm(Will_Donate ~ group, family = binomial, data = data_dichotom)
+regression_model_2_no_ethnicity_madrasa_enrolment_family <- glm(Will_Donate ~ group  + Gender + Age + d8a + d7 + d4 + d3 + d2 + ur 
+, family = binomial, data = data_dichotom)
+
+
+regression_model_3_no_ethnicity_madrasa_enrolment_family <-  glm(Will_Donate ~ group + q1 + q2 + family_madrasa + madrasa_enrolment + q5 + q6, data = data_dichotom 
+, family = binomial)
+
+
+regression_model_4_no_ethnicity_madrasa_enrolment_family <-  glm(Will_Donate ~ group + q1 + q2 + family_madrasa + madrasa_enrolment + q5 + q6  + Gender + Age + d8a + d7 + d4 + d3 + d2 + ur, data = data_dichotom , family = binomial)
+
+summary(regression_model_4_no_ethnicity_madrasa_enrolment_family)
+
+stargazer(regression_model_1_no_ethnicity_madrasa_enrolment_family, regression_model_2_no_ethnicity_madrasa_enrolment_family, regression_model_3_no_ethnicity_madrasa_enrolment_family, regression_model_4_no_ethnicity_madrasa_enrolment_family, out = "regression_complete_ethnicity_madrasa_enrolment_family.html", covariate.labels = labels_list_new)
+
+
+
+
+
+
+
+
+```
+
+Probit regression with scale 1-5.
+
+```{r}
+
+probit_regression_model_1_no_ethnicity_madrasa_family <-  glm(group_result ~ group, family=binomial(link="probit"), data = data_dichotom)
+probit_regression_model_2_no_ethnicity_madrasa_family <- glm(group_result ~ group  + Gender + Age + d8a + d7 + d4 + d3 + d2 + ur 
+, family=binomial(link="probit"), data = data_dichotom)
+
+
+probit_regression_model_3_no_ethnicity_madrasa_family <-  glm(group_result ~ group + q1 + q2 + family_madrasa + madrasa_enrolment + q5 + q6, data = data_dichotom 
+, family=binomial(link="probit"))
+
+
+probit_regression_model_4_no_ethnicity_madrasa_family <-  glm(group_result ~ group + q1 + q2 +  family_madrasa + madrasa_enrolment + q5 + q6  + Gender + Age + d8a + d7 + d4 + d3 + d2 + ur, data = data_dichotom , family=binomial(link="probit"))
+
+summary(probit_regression_model_4_no_ethnicity_madrasa_family)
+
+table(data_dichotom$q3, data_dichotom$group_result)
+table(data_dichotom$d8a)
+stargazer(probit_regression_model_1_no_ethnicity_madrasa_family, probit_regression_model_2_no_ethnicity_madrasa_family, probit_regression_model_3_no_ethnicity_madrasa_family, probit_regression_model_4_no_ethnicity_madrasa_family, out = "probit_regression_complete_ethnicity_madrasas_family_labels_final.html", covariate.labels = labels_list_new)
+
+
+```
+
+
+Collecting information about the frequency of different responses that individuals gave.
+
+```{r}
+print.xtable(xtable(table(data_dichotom$group_result)), type = "html", file="group_results.html")
+
+
+```
+Cross-Tables of Willingness to Donate with group and donations in the last 12 months.
+
+```{r}
+
+CrossTable(data_dichotom$Will_Donate, data_dichotom$group, dnn = c("Willingness to Donate", "Group"))
+
+round(CrossTable(data_dichotom$Will_Donate, data_dichotom$q1, dnn = c("Willingness to Donate", "Previous Donations in Last 12 Months"),2)
+
+CrossTable(data_dichotom$group_result, data_dichotom$q1, dnn = c("Willingness to Donate", "Previous Donations in Last 12 Months"))
+
+CrossTable(data_dichotom$group_result, data_dichotom$group, dnn = c("Willingness to Donate", "Previous Donations in Last 12 Months"))
+
+round(0.296,2)
+
+
+round(prop.table(table(data_dichotom$Will_Donate, data_dichotom$group)),2)
+)
+
+```
+
+
+Printing Wilcox Test Table
+
+```{r}
+
+wilcox_test_list <- list(control, government, saudi_arab, USA, germany)
+wilcox_test_results <- list()
+for (i in 1:5) {
+  wilcox_test_results[[i]] <- wilcox.test(as.numeric(control$group_result), as.numeric(wilcox_test_list[[i]]$group_result))
+
+}
+
+wilcox_test_set <- do.call(rbind,wilcox_test_results)
+
+
+wt_results <- cbind.data.frame(c("Control",  "Government", "Saudi Arabia", "USA", "Germany"), do.call(rbind, wilcox_test_set[,"p.value"]))
+wt_results <- wt_results[-1,]
+colnames(wt_results) <- c("Treatment", "Result")
+wt_results[,"Result"] <- round(as.numeric(wt_results[,"Result"]),5)
+print(xtable(wt_results), type = "html", file = "wt.html")
+
+```
+
+
